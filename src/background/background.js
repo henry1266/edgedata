@@ -63,9 +63,13 @@ async function captureAndExtractData() {
     // 處理新的回應格式
     const success = response.success !== undefined ? response.success : (response.tableData !== null);
     const tableData = response.tableData;
+    const personalInfo = response.personalInfo;
     const message = response.message || (success ? '資料擷取成功' : '未找到表格資料');
     
     console.log('資料擷取結果:', message);
+    if (personalInfo) {
+      console.log('個人資料擷取成功:', personalInfo);
+    }
     
     // 儲存截圖和資料
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -84,7 +88,7 @@ async function captureAndExtractData() {
     }
     
     // 創建說明文件
-    await createInfoFile(tab, tableData, filename, folderName, timestamp);
+    await createInfoFile(tab, tableData, personalInfo, filename, folderName, timestamp);
     
     return {
       success: success,
@@ -160,11 +164,11 @@ function convertToCSV(tableData) {
 
 
 // 創建說明文件
-async function createInfoFile(tab, tableData, filename, folderName, timestamp) {
+async function createInfoFile(tab, tableData, personalInfo, filename, folderName, timestamp) {
   try {
     // 創建說明內容
     const now = new Date();
-    const infoContent = `醫療資料擷取說明
+    let infoContent = `醫療資料擷取說明
 ===================
 
 擷取時間: ${now.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}
@@ -175,16 +179,34 @@ async function createInfoFile(tab, tableData, filename, folderName, timestamp) {
 檔案清單:
 - ${filename}.png (截圖)
 ${tableData && tableData.length > 0 ? `- ${filename}.csv (表格資料，共 ${tableData.length} 筆記錄)` : '- 無表格資料'}
+${personalInfo ? '- personal-info.json (個人基本資料)' : ''}
 - info.txt (本說明文件)
+`;
 
-${tableData && tableData.length > 0 ? `
+    // 添加個人資料摘要
+    if (personalInfo) {
+      infoContent += `
+個人基本資料:
+${personalInfo.name ? `姓名: ${personalInfo.name}` : ''}
+${personalInfo.idNumber ? `身分證號: ${personalInfo.idNumber}` : ''}
+${personalInfo.birthDate ? `出生日期: ${personalInfo.birthDate}` : ''}
+${personalInfo.birthDateAD ? `出生日期(西元): ${personalInfo.birthDateAD}` : ''}
+${personalInfo.gender ? `性別: ${personalInfo.gender}` : ''}
+`;
+    }
+
+    // 添加表格資料摘要
+    if (tableData && tableData.length > 0) {
+      infoContent += `
 表格資料摘要:
 欄位數量: ${Object.keys(tableData[0]).length}
 記錄數量: ${tableData.length}
 欄位名稱: ${Object.keys(tableData[0]).join(', ')}
-` : ''}
+`;
+    }
 
-擷取工具: 醫療資料一鍵擷取工具 v1.0.0
+    infoContent += `
+擷取工具: 醫療資料一鍵擷取工具 v1.1.0
 技術支援: Chrome Extension API
 `;
 
@@ -193,7 +215,7 @@ ${tableData && tableData.length > 0 ? `
     const dataUrl = `data:text/plain;charset=utf-8;base64,${base64}`;
     
     // 儲存說明文件
-    return new Promise((resolve, reject) => {
+    const infoPromise = new Promise((resolve, reject) => {
       chrome.downloads.download({
         url: dataUrl,
         filename: `${folderName}/info.txt`,
@@ -201,16 +223,46 @@ ${tableData && tableData.length > 0 ? `
       }, downloadId => {
         if (chrome.runtime.lastError) {
           console.warn('無法創建說明文件:', chrome.runtime.lastError);
-          resolve(null); // 不讓說明文件失敗影響主要功能
+          resolve(null);
         } else {
           console.log('成功創建說明文件');
           resolve(downloadId);
         }
       });
     });
+
+    // 如果有個人資料，也儲存為JSON檔案
+    if (personalInfo) {
+      const personalInfoJson = JSON.stringify(personalInfo, null, 2);
+      const personalInfoBase64 = btoa(unescape(encodeURIComponent(personalInfoJson)));
+      const personalInfoDataUrl = `data:application/json;charset=utf-8;base64,${personalInfoBase64}`;
+      
+      const personalInfoPromise = new Promise((resolve, reject) => {
+        chrome.downloads.download({
+          url: personalInfoDataUrl,
+          filename: `${folderName}/personal-info.json`,
+          saveAs: false
+        }, downloadId => {
+          if (chrome.runtime.lastError) {
+            console.warn('無法創建個人資料JSON檔案:', chrome.runtime.lastError);
+            resolve(null);
+          } else {
+            console.log('成功創建個人資料JSON檔案');
+            resolve(downloadId);
+          }
+        });
+      });
+
+      // 等待兩個檔案都完成
+      await Promise.all([infoPromise, personalInfoPromise]);
+    } else {
+      await infoPromise;
+    }
+
+    return true;
   } catch (error) {
     console.warn('創建說明文件時發生錯誤:', error);
-    return null; // 不讓說明文件失敗影響主要功能
+    return null;
   }
 }
 

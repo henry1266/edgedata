@@ -16,10 +16,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       tableData = extractTableData();
     }
     
-    console.log('擷取結果:', tableData ? `成功擷取 ${tableData.length} 筆資料` : '擷取失敗');
+    // 擷取個人基本資料
+    console.log('開始擷取個人基本資料');
+    const personalInfo = getPersonalInfo();
+    
+    console.log('擷取結果:', tableData ? `成功擷取 ${tableData.length} 筆表格資料` : '表格擷取失敗');
+    console.log('個人資料擷取結果:', personalInfo ? '成功擷取個人資料' : '未找到個人資料');
+    
     sendResponse({ 
       success: tableData !== null,
       tableData: tableData,
+      personalInfo: personalInfo,
       message: tableData ? `成功擷取 ${tableData.length} 筆資料` : '未找到表格資料'
     });
   }
@@ -389,3 +396,140 @@ function detectMedicalSystem() {
 
 // 執行初始化
 initialize();
+
+// 擷取個人基本資料
+function extractPersonalInfo() {
+  try {
+    console.log('開始擷取個人基本資料...');
+    
+    const personalInfo = {};
+    
+    // 擷取身分證號
+    const idElement = document.querySelector('.idno');
+    if (idElement) {
+      const idText = idElement.textContent.trim();
+      // 移除前綴文字，提取實際身分證號
+      const idMatch = idText.match(/[A-Z]\d{2}\*{3}\d{3}|[A-Z]\d{9}/);
+      if (idMatch) {
+        personalInfo.idNumber = idMatch[0];
+        console.log('找到身分證號:', personalInfo.idNumber);
+      } else {
+        // 如果沒有匹配到標準格式，保留原始文字（去除前綴）
+        personalInfo.idNumber = idText.replace(/^身分證號[：:]\s*/, '');
+      }
+    }
+    
+    // 擷取姓名
+    const nameElement = document.querySelector('.name');
+    if (nameElement) {
+      personalInfo.name = nameElement.textContent.trim();
+      console.log('找到姓名:', personalInfo.name);
+    }
+    
+    // 擷取出生日期
+    const birthElement = document.querySelector('.birth');
+    if (birthElement) {
+      const birthText = birthElement.textContent.trim();
+      personalInfo.birthDate = birthText;
+      
+      // 嘗試轉換民國年為西元年
+      const rocMatch = birthText.match(/民\s*(\d{2,3})\/(\d{1,2})\/(\d{1,2})/);
+      if (rocMatch) {
+        const rocYear = parseInt(rocMatch[1]);
+        const month = rocMatch[2].padStart(2, '0');
+        const day = rocMatch[3].padStart(2, '0');
+        const adYear = rocYear + 1911;
+        personalInfo.birthDateAD = `${adYear}/${month}/${day}`;
+        console.log('找到出生日期:', personalInfo.birthDate, '(西元年:', personalInfo.birthDateAD + ')');
+      } else {
+        console.log('找到出生日期:', personalInfo.birthDate);
+      }
+    }
+    
+    // 擷取性別
+    const genderElement = document.querySelector('.sex');
+    if (genderElement) {
+      personalInfo.gender = genderElement.textContent.trim();
+      console.log('找到性別:', personalInfo.gender);
+    }
+    
+    // 添加擷取時間和來源
+    personalInfo.extractedAt = new Date().toISOString();
+    personalInfo.source = document.title || window.location.href;
+    
+    // 檢查是否有找到任何個人資料
+    const hasData = Object.keys(personalInfo).some(key => 
+      key !== 'extractedAt' && key !== 'source' && personalInfo[key]
+    );
+    
+    if (hasData) {
+      console.log('成功擷取個人資料:', personalInfo);
+      return personalInfo;
+    } else {
+      console.log('未找到個人資料');
+      return null;
+    }
+  } catch (error) {
+    console.error('擷取個人資料時發生錯誤:', error);
+    return null;
+  }
+}
+
+// 使用通用方法擷取個人資料（備用方案）
+function extractPersonalInfoGeneric() {
+  try {
+    console.log('使用通用方法擷取個人資料...');
+    
+    const personalInfo = {};
+    const pageText = document.body.textContent;
+    
+    // 使用正則表達式尋找身分證號
+    const idPattern = /身分證號[：:]\s*([A-Z]\d{2}\*{3}\d{3}|[A-Z]\d{9})/;
+    const idMatch = pageText.match(idPattern);
+    if (idMatch) {
+      personalInfo.idNumber = idMatch[1];
+      console.log('通用方法找到身分證號:', personalInfo.idNumber);
+    }
+    
+    // 使用正則表達式尋找民國年出生日期
+    const birthPattern = /民\s*(\d{2,3})\/(\d{1,2})\/(\d{1,2})/;
+    const birthMatch = pageText.match(birthPattern);
+    if (birthMatch) {
+      personalInfo.birthDate = `民 ${birthMatch[1]}/${birthMatch[2]}/${birthMatch[3]}`;
+      const rocYear = parseInt(birthMatch[1]);
+      const month = birthMatch[2].padStart(2, '0');
+      const day = birthMatch[3].padStart(2, '0');
+      const adYear = rocYear + 1911;
+      personalInfo.birthDateAD = `${adYear}/${month}/${day}`;
+      console.log('通用方法找到出生日期:', personalInfo.birthDate);
+    }
+    
+    // 添加擷取時間和來源
+    personalInfo.extractedAt = new Date().toISOString();
+    personalInfo.source = document.title || window.location.href;
+    
+    // 檢查是否有找到任何個人資料
+    const hasData = Object.keys(personalInfo).some(key => 
+      key !== 'extractedAt' && key !== 'source' && personalInfo[key]
+    );
+    
+    return hasData ? personalInfo : null;
+  } catch (error) {
+    console.error('通用個人資料擷取時發生錯誤:', error);
+    return null;
+  }
+}
+
+// 主要個人資料擷取函數
+function getPersonalInfo() {
+  // 優先使用特定選擇器方法
+  let personalInfo = extractPersonalInfo();
+  
+  // 如果失敗，使用通用方法
+  if (!personalInfo) {
+    personalInfo = extractPersonalInfoGeneric();
+  }
+  
+  return personalInfo;
+}
+
