@@ -55,6 +55,18 @@ async function captureAndExtractData() {
       throw new Error('無法與頁面通信，請確保您在有效的網頁上使用此擴充功能');
     }
     
+    // 檢查回應格式
+    if (!response) {
+      throw new Error('未收到內容腳本的回應');
+    }
+    
+    // 處理新的回應格式
+    const success = response.success !== undefined ? response.success : (response.tableData !== null);
+    const tableData = response.tableData;
+    const message = response.message || (success ? '資料擷取成功' : '未找到表格資料');
+    
+    console.log('資料擷取結果:', message);
+    
     // 儲存截圖和資料
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `medical-data-${timestamp}`;
@@ -62,19 +74,27 @@ async function captureAndExtractData() {
     // 儲存截圖
     await saveScreenshot(screenshotUrl, filename);
     
-    // 儲存表格資料
-    if (response && response.tableData) {
-      await saveTableData(response.tableData, filename);
+    // 儲存表格資料（如果有的話）
+    if (success && tableData && tableData.length > 0) {
+      await saveTableData(tableData, filename);
+      console.log(`成功儲存 ${tableData.length} 筆資料到 ${filename}.csv`);
+    } else {
+      console.log('沒有表格資料需要儲存');
     }
     
     return {
-      success: true,
+      success: success,
       screenshot: screenshotUrl,
-      tableData: response ? response.tableData : null
+      tableData: tableData,
+      message: message
     };
   } catch (error) {
     console.error('擷取資料時發生錯誤:', error);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error.message,
+      message: `錯誤: ${error.message}`
+    };
   }
 }
 

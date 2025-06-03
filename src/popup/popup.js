@@ -86,12 +86,13 @@ document.addEventListener('DOMContentLoaded', function() {
           if (response.tableData && response.tableData.length > 0) {
             generateDataTable(response.tableData);
           } else {
-            dataPreview.innerHTML = '<p class="no-data">未找到表格資料</p>';
+            dataPreview.innerHTML = '<p class="no-data">' + (response.message || '未找到表格資料') + '</p>';
           }
         }, 500);
       } else {
         // 顯示錯誤
-        statusMessage.textContent = '發生錯誤: ' + (response ? response.error : '未知錯誤');
+        const errorMessage = response ? (response.message || response.error || '未知錯誤') : '未知錯誤';
+        statusMessage.textContent = '發生錯誤: ' + errorMessage;
         setTimeout(function() {
           statusPanel.style.display = 'none';
         }, 3000);
@@ -167,18 +168,19 @@ document.addEventListener('DOMContentLoaded', function() {
   copyBtn.addEventListener('click', function() {
     chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, { action: 'extractTableData' }, function(response) {
-        if (response && response.tableData) {
+        if (response && response.success && response.tableData && response.tableData.length > 0) {
           // 轉換為CSV格式
           const csv = convertToCSV(response.tableData);
           
           // 複製到剪貼簿
           navigator.clipboard.writeText(csv).then(function() {
-            showToast('資料已複製到剪貼簿');
+            showToast(`已複製 ${response.tableData.length} 筆資料到剪貼簿`);
           }).catch(function(err) {
             showToast('複製失敗: ' + err);
           });
         } else {
-          showToast('沒有可複製的資料');
+          const message = response ? (response.message || '沒有可複製的資料') : '沒有可複製的資料';
+          showToast(message);
         }
       });
     });
