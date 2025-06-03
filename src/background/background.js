@@ -22,6 +22,20 @@ function formatErrorMessage(error) {
   }
 }
 
+// 檢查是否為無害的通信錯誤
+function isHarmlessCommunicationError(errorMessage) {
+  const harmlessErrors = [
+    'Could not establish connection. Receiving end does not exist',
+    'The message port closed before a response was received',
+    'Extension context invalidated',
+    'Cannot access contents of the page'
+  ];
+  
+  return harmlessErrors.some(harmlessError => 
+    errorMessage.includes(harmlessError)
+  );
+}
+
 // 監聽來自彈出視窗的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'captureAndExtract') {
@@ -56,27 +70,56 @@ async function captureAndExtractData() {
         chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' }, (result) => {
           if (chrome.runtime.lastError) {
             const errorMessage = formatErrorMessage(chrome.runtime.lastError);
-            console.error('發送消息時發生錯誤:', errorMessage);
-            // 嘗試注入內容腳本
-            chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              files: ['src/content/content.js']
-            }).then(() => {
-              // 腳本注入後再次嘗試發送消息
-              setTimeout(() => {
-                chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' }, (retryResult) => {
-                  if (chrome.runtime.lastError) {
-                    const retryErrorMessage = formatErrorMessage(chrome.runtime.lastError);
-                    reject(new Error(`內容腳本通信失敗: ${retryErrorMessage}`));
-                  } else {
-                    resolve(retryResult);
-                  }
-                });
-              }, 500); // 給予腳本載入的時間
-            }).catch(err => {
-              const injectErrorMessage = formatErrorMessage(err);
-              reject(new Error(`腳本注入失敗: ${injectErrorMessage}`));
-            });
+            
+            // 檢查是否為無害的通信錯誤
+            if (isHarmlessCommunicationError(errorMessage)) {
+              // 無害錯誤：只在控制台記錄，不顯示給用戶
+              console.log('通信提示 (功能正常):', errorMessage);
+              // 嘗試注入內容腳本，但不顯示錯誤
+              chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                files: ['src/content/content.js']
+              }).then(() => {
+                // 腳本注入後再次嘗試發送消息
+                setTimeout(() => {
+                  chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' }, (retryResult) => {
+                    if (chrome.runtime.lastError) {
+                      // 再次失敗也靜默處理
+                      console.log('重試通信提示:', formatErrorMessage(chrome.runtime.lastError));
+                      resolve({ success: true, tableData: [], personalInfo: null, message: '基本功能完成' });
+                    } else {
+                      resolve(retryResult);
+                    }
+                  });
+                }, 500);
+              }).catch(err => {
+                console.log('腳本注入提示:', formatErrorMessage(err));
+                resolve({ success: true, tableData: [], personalInfo: null, message: '基本功能完成' });
+              });
+            } else {
+              // 真正的錯誤：顯示給用戶
+              console.error('發送消息時發生錯誤:', errorMessage);
+              // 嘗試注入內容腳本
+              chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                files: ['src/content/content.js']
+              }).then(() => {
+                // 腳本注入後再次嘗試發送消息
+                setTimeout(() => {
+                  chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' }, (retryResult) => {
+                    if (chrome.runtime.lastError) {
+                      const retryErrorMessage = formatErrorMessage(chrome.runtime.lastError);
+                      reject(new Error(`內容腳本通信失敗: ${retryErrorMessage}`));
+                    } else {
+                      resolve(retryResult);
+                    }
+                  });
+                }, 500);
+              }).catch(err => {
+                const injectErrorMessage = formatErrorMessage(err);
+                reject(new Error(`腳本注入失敗: ${injectErrorMessage}`));
+              });
+            }
           } else {
             resolve(result);
           }

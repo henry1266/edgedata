@@ -21,6 +21,20 @@ function formatErrorMessage(error) {
   }
 }
 
+// 檢查是否為無害的通信錯誤
+function isHarmlessCommunicationError(errorMessage) {
+  const harmlessErrors = [
+    'Could not establish connection. Receiving end does not exist',
+    'The message port closed before a response was received',
+    'Extension context invalidated',
+    'Cannot access contents of the page'
+  ];
+  
+  return harmlessErrors.some(harmlessError => 
+    errorMessage.includes(harmlessError)
+  );
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   // 獲取DOM元素
   const captureBtn = document.getElementById('captureBtn');
