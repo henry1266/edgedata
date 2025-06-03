@@ -72,8 +72,22 @@ async function captureAndExtractData() {
     }
     
     // 儲存截圖和資料
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const folderName = `醫療資料擷取_${timestamp}`;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    // 從個人資料中提取姓名，如果沒有則使用預設值
+    const name = personalInfo && personalInfo.name ? personalInfo.name : '醫療資料';
+    
+    // 新的資料夾命名格式：yyyy-mm-dd_hh-mm-ss_{name}（使用破折號確保檔案系統相容性）
+    const folderName = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}_${name}`;
+    
+    // 檔案名稱保持原有格式以確保相容性
+    const timestamp = now.toISOString().replace(/[:.]/g, '-');
     const filename = `medical-data-${timestamp}`;
     
     // 儲存截圖
