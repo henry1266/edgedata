@@ -21,7 +21,39 @@ async function captureAndExtractData() {
     const screenshotUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
     
     // 向內容腳本發送消息，請求擷取表格資料
-    const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' });
+    let response;
+    try {
+      response = await new Promise((resolve, reject) => {
+        chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' }, (result) => {
+          if (chrome.runtime.lastError) {
+            console.error('發送消息時發生錯誤:', chrome.runtime.lastError);
+            // 嘗試注入內容腳本
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ['/src/content/content.js']
+            }).then(() => {
+              // 腳本注入後再次嘗試發送消息
+              setTimeout(() => {
+                chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' }, (retryResult) => {
+                  if (chrome.runtime.lastError) {
+                    reject(chrome.runtime.lastError);
+                  } else {
+                    resolve(retryResult);
+                  }
+                });
+              }, 500); // 給予腳本載入的時間
+            }).catch(err => {
+              reject(err);
+            });
+          } else {
+            resolve(result);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('與內容腳本通信失敗:', error);
+      throw new Error('無法與頁面通信，請確保您在有效的網頁上使用此擴充功能');
+    }
     
     // 儲存截圖和資料
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
