@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>醫療資料一鍵擷取工具</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>醫療資料一鍵擷取工具</h1>
+    </header>
+    
+    <main>
+      <div class="action-panel">
+        <button id="captureBtn" class="primary-btn">
+          <span class="icon">📷</span>
+          截圖並擷取資料
+        </button>
+        
+        <div class="options">
+          <div class="option-item">
+            <input type="checkbox" id="autoDetectTable" checked>
+            <label for="autoDetectTable">自動偵測表格</label>
+          </div>
+          
+          <div class="option-item">
+            <input type="checkbox" id="saveAsCSV" checked>
+            <label for="saveAsCSV">儲存為 CSV</label>
+          </div>
+          
+          <div class="option-item">
+            <input type="checkbox" id="saveAsJSON">
+            <label for="saveAsJSON">儲存為 JSON</label>
+          </div>
+        </div>
+      </div>
+      
+      <div class="status-panel" id="statusPanel" style="display: none;">
+        <div class="status-message" id="statusMessage">處理中...</div>
+        <div class="progress-bar">
+          <div class="progress" id="progressBar"></div>
+        </div>
+      </div>
+      
+      <div class="result-panel" id="resultPanel" style="display: none;">
+        <div class="result-header">
+          <h2>擷取結果</h2>
+          <button id="closeResultBtn" class="icon-btn">✕</button>
+        </div>
+        
+        <div class="result-content">
+          <div class="screenshot-preview">
+            <h3>截圖預覽</h3>
+            <img id="screenshotPreview" src="" alt="截圖預覽">
+          </div>
+          
+          <div class="data-preview">
+            <h3>資料預覽</h3>
+            <div id="dataPreview" class="data-table-container">
+              <!-- 資料表格將在這裡動態生成 -->
+            </div>
+          </div>
+        </div>
+        
+        <div class="result-actions">
+          <button id="downloadBtn" class="secondary-btn">
+            <span class="icon">💾</span>
+            下載全部
+          </button>
+          <button id="copyBtn" class="secondary-btn">
+            <span class="icon">📋</span>
+            複製資料
+          </button>
+        </div>
+      </div>
+    </main>
+    
+    <footer>
+      <button id="settingsBtn" class="text-btn">設定</button>
+      <button id="helpBtn" class="text-btn">說明</button>
+    </footer>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
