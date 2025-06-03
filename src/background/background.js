@@ -1,12 +1,41 @@
 // 背景腳本 - 處理擴充功能的全局狀態和生命週期
 // 負責管理截圖和資料擷取的協調工作
 
+// 格式化錯誤訊息的輔助函數
+function formatErrorMessage(error) {
+  if (!error) return '未知錯誤';
+  
+  // 如果是字符串，直接返回
+  if (typeof error === 'string') return error;
+  
+  // 如果是Error對象，返回message屬性
+  if (error instanceof Error) return error.message;
+  
+  // 如果是chrome.runtime.lastError對象
+  if (error.message) return error.message;
+  
+  // 如果是其他對象，嘗試JSON序列化
+  try {
+    return JSON.stringify(error);
+  } catch (e) {
+    return '錯誤對象無法序列化';
+  }
+}
+
 // 監聽來自彈出視窗的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'captureAndExtract') {
     captureAndExtractData()
       .then(result => sendResponse(result))
-      .catch(error => sendResponse({ error: error.message }));
+      .catch(error => {
+        const errorMessage = formatErrorMessage(error);
+        console.error('擷取資料時發生錯誤:', errorMessage);
+        sendResponse({ 
+          success: false,
+          error: errorMessage,
+          message: `錯誤: ${errorMessage}`
+        });
+      });
     return true; // 非同步回應
   }
 });
@@ -26,24 +55,27 @@ async function captureAndExtractData() {
       response = await new Promise((resolve, reject) => {
         chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' }, (result) => {
           if (chrome.runtime.lastError) {
-            console.error('發送消息時發生錯誤:', chrome.runtime.lastError);
+            const errorMessage = formatErrorMessage(chrome.runtime.lastError);
+            console.error('發送消息時發生錯誤:', errorMessage);
             // 嘗試注入內容腳本
             chrome.scripting.executeScript({
               target: { tabId: tab.id },
-              files: ['/src/content/content.js']
+              files: ['src/content/content.js']
             }).then(() => {
               // 腳本注入後再次嘗試發送消息
               setTimeout(() => {
                 chrome.tabs.sendMessage(tab.id, { action: 'extractTableData' }, (retryResult) => {
                   if (chrome.runtime.lastError) {
-                    reject(chrome.runtime.lastError);
+                    const retryErrorMessage = formatErrorMessage(chrome.runtime.lastError);
+                    reject(new Error(`內容腳本通信失敗: ${retryErrorMessage}`));
                   } else {
                     resolve(retryResult);
                   }
                 });
               }, 500); // 給予腳本載入的時間
             }).catch(err => {
-              reject(err);
+              const injectErrorMessage = formatErrorMessage(err);
+              reject(new Error(`腳本注入失敗: ${injectErrorMessage}`));
             });
           } else {
             resolve(result);
@@ -51,8 +83,9 @@ async function captureAndExtractData() {
         });
       });
     } catch (error) {
-      console.error('與內容腳本通信失敗:', error);
-      throw new Error('無法與頁面通信，請確保您在有效的網頁上使用此擴充功能');
+      const errorMessage = formatErrorMessage(error);
+      console.error('與內容腳本通信失敗:', errorMessage);
+      throw new Error(`無法與頁面通信: ${errorMessage}`);
     }
     
     // 檢查回應格式
@@ -113,11 +146,12 @@ async function captureAndExtractData() {
       message: message
     };
   } catch (error) {
-    console.error('擷取資料時發生錯誤:', error);
+    const errorMessage = formatErrorMessage(error);
+    console.error('擷取資料時發生錯誤:', errorMessage);
     return { 
       success: false, 
-      error: error.message,
-      message: `錯誤: ${error.message}`
+      error: errorMessage,
+      message: `錯誤: ${errorMessage}`
     };
   }
 }
@@ -131,7 +165,8 @@ async function saveScreenshot(dataUrl, filename, folderName) {
       saveAs: false
     }, downloadId => {
       if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
+        const errorMessage = formatErrorMessage(chrome.runtime.lastError);
+        reject(new Error(`截圖儲存失敗: ${errorMessage}`));
       } else {
         resolve(downloadId);
       }
@@ -156,7 +191,8 @@ async function saveTableData(tableData, filename, folderName) {
       saveAs: false
     }, downloadId => {
       if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
+        const errorMessage = formatErrorMessage(chrome.runtime.lastError);
+        reject(new Error(`CSV檔案儲存失敗: ${errorMessage}`));
       } else {
         resolve(downloadId);
       }
@@ -210,7 +246,8 @@ async function createPersonalInfoFile(personalInfo, folderName) {
         saveAs: false
       }, downloadId => {
         if (chrome.runtime.lastError) {
-          console.warn('無法創建個人資料JSON檔案:', chrome.runtime.lastError);
+          const errorMessage = formatErrorMessage(chrome.runtime.lastError);
+          console.warn('無法創建個人資料JSON檔案:', errorMessage);
           resolve(null);
         } else {
           console.log('成功創建個人資料JSON檔案');
