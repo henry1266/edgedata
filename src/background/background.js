@@ -87,8 +87,10 @@ async function captureAndExtractData() {
       console.log('沒有表格資料需要儲存');
     }
     
-    // 創建說明文件
-    await createInfoFile(tab, tableData, personalInfo, filename, folderName, timestamp);
+    // 創建個人資料文件（如果有個人資料的話）
+    if (personalInfo) {
+      await createPersonalInfoFile(personalInfo, folderName);
+    }
     
     return {
       success: success,
@@ -155,7 +157,17 @@ function convertToCSV(tableData) {
   const header = Object.keys(tableData[0]).join(',');
   const rows = tableData.map(row => {
     return Object.values(row)
-      .map(value => `"${String(value).replace(/"/g, '""')}"`)
+      .map(value => {
+        // 改良斷句處理
+        let processedValue = String(value)
+          .replace(/\n/g, ' | ')    // 換行符替換為分隔符
+          .replace(/\r/g, '')       // 移除回車符
+          .replace(/\s+/g, ' ')     // 多個空白字符替換為單個空格
+          .trim();                  // 移除首尾空白
+        
+        // 處理雙引號轉義
+        return `"${processedValue.replace(/"/g, '""')}"`;
+      })
       .join(',');
   });
   
@@ -163,105 +175,37 @@ function convertToCSV(tableData) {
 }
 
 
-// 創建說明文件
-async function createInfoFile(tab, tableData, personalInfo, filename, folderName, timestamp) {
+// 創建個人資料JSON文件
+async function createPersonalInfoFile(personalInfo, folderName) {
   try {
-    // 創建說明內容
-    const now = new Date();
-    let infoContent = `醫療資料擷取說明
-===================
-
-擷取時間: ${now.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}
-網站標題: ${tab.title}
-網站網址: ${tab.url}
-檔案名稱: ${filename}
-
-檔案清單:
-- ${filename}.png (截圖)
-${tableData && tableData.length > 0 ? `- ${filename}.csv (表格資料，共 ${tableData.length} 筆記錄)` : '- 無表格資料'}
-${personalInfo ? '- personal-info.json (個人基本資料)' : ''}
-- info.txt (本說明文件)
-`;
-
-    // 添加個人資料摘要
-    if (personalInfo) {
-      infoContent += `
-個人基本資料:
-${personalInfo.name ? `姓名: ${personalInfo.name}` : ''}
-${personalInfo.idNumber ? `身分證號: ${personalInfo.idNumber}` : ''}
-${personalInfo.birthDate ? `出生日期: ${personalInfo.birthDate}` : ''}
-${personalInfo.birthDateAD ? `出生日期(西元): ${personalInfo.birthDateAD}` : ''}
-${personalInfo.gender ? `性別: ${personalInfo.gender}` : ''}
-`;
+    if (!personalInfo) {
+      console.log('沒有個人資料需要儲存');
+      return null;
     }
 
-    // 添加表格資料摘要
-    if (tableData && tableData.length > 0) {
-      infoContent += `
-表格資料摘要:
-欄位數量: ${Object.keys(tableData[0]).length}
-記錄數量: ${tableData.length}
-欄位名稱: ${Object.keys(tableData[0]).join(', ')}
-`;
-    }
-
-    infoContent += `
-擷取工具: 醫療資料一鍵擷取工具 v1.1.0
-技術支援: Chrome Extension API
-`;
-
-    // 將說明內容轉換為 Base64 編碼
-    const base64 = btoa(unescape(encodeURIComponent(infoContent)));
-    const dataUrl = `data:text/plain;charset=utf-8;base64,${base64}`;
+    // 將個人資料轉換為JSON格式
+    const personalInfoJson = JSON.stringify(personalInfo, null, 2);
+    const personalInfoBase64 = btoa(unescape(encodeURIComponent(personalInfoJson)));
+    const personalInfoDataUrl = `data:application/json;charset=utf-8;base64,${personalInfoBase64}`;
     
-    // 儲存說明文件
-    const infoPromise = new Promise((resolve, reject) => {
+    // 儲存個人資料JSON文件
+    return new Promise((resolve, reject) => {
       chrome.downloads.download({
-        url: dataUrl,
-        filename: `${folderName}/info.txt`,
+        url: personalInfoDataUrl,
+        filename: `${folderName}/personal-info.json`,
         saveAs: false
       }, downloadId => {
         if (chrome.runtime.lastError) {
-          console.warn('無法創建說明文件:', chrome.runtime.lastError);
+          console.warn('無法創建個人資料JSON檔案:', chrome.runtime.lastError);
           resolve(null);
         } else {
-          console.log('成功創建說明文件');
+          console.log('成功創建個人資料JSON檔案');
           resolve(downloadId);
         }
       });
     });
-
-    // 如果有個人資料，也儲存為JSON檔案
-    if (personalInfo) {
-      const personalInfoJson = JSON.stringify(personalInfo, null, 2);
-      const personalInfoBase64 = btoa(unescape(encodeURIComponent(personalInfoJson)));
-      const personalInfoDataUrl = `data:application/json;charset=utf-8;base64,${personalInfoBase64}`;
-      
-      const personalInfoPromise = new Promise((resolve, reject) => {
-        chrome.downloads.download({
-          url: personalInfoDataUrl,
-          filename: `${folderName}/personal-info.json`,
-          saveAs: false
-        }, downloadId => {
-          if (chrome.runtime.lastError) {
-            console.warn('無法創建個人資料JSON檔案:', chrome.runtime.lastError);
-            resolve(null);
-          } else {
-            console.log('成功創建個人資料JSON檔案');
-            resolve(downloadId);
-          }
-        });
-      });
-
-      // 等待兩個檔案都完成
-      await Promise.all([infoPromise, personalInfoPromise]);
-    } else {
-      await infoPromise;
-    }
-
-    return true;
   } catch (error) {
-    console.warn('創建說明文件時發生錯誤:', error);
+    console.warn('創建個人資料文件時發生錯誤:', error);
     return null;
   }
 }
