@@ -69,18 +69,22 @@ async function captureAndExtractData() {
     
     // 儲存截圖和資料
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const folderName = `醫療資料擷取_${timestamp}`;
     const filename = `medical-data-${timestamp}`;
     
     // 儲存截圖
-    await saveScreenshot(screenshotUrl, filename);
+    await saveScreenshot(screenshotUrl, filename, folderName);
     
     // 儲存表格資料（如果有的話）
     if (success && tableData && tableData.length > 0) {
-      await saveTableData(tableData, filename);
-      console.log(`成功儲存 ${tableData.length} 筆資料到 ${filename}.csv`);
+      await saveTableData(tableData, filename, folderName);
+      console.log(`成功儲存 ${tableData.length} 筆資料到 ${folderName}/${filename}.csv`);
     } else {
       console.log('沒有表格資料需要儲存');
     }
+    
+    // 創建說明文件
+    await createInfoFile(tab, tableData, filename, folderName, timestamp);
     
     return {
       success: success,
@@ -99,11 +103,11 @@ async function captureAndExtractData() {
 }
 
 // 儲存截圖
-async function saveScreenshot(dataUrl, filename) {
+async function saveScreenshot(dataUrl, filename, folderName) {
   return new Promise((resolve, reject) => {
     chrome.downloads.download({
       url: dataUrl,
-      filename: `${filename}.png`,
+      filename: `${folderName}/${filename}.png`,
       saveAs: false
     }, downloadId => {
       if (chrome.runtime.lastError) {
@@ -116,7 +120,7 @@ async function saveScreenshot(dataUrl, filename) {
 }
 
 // 儲存表格資料
-async function saveTableData(tableData, filename) {
+async function saveTableData(tableData, filename, folderName) {
   // 轉換為 CSV 格式
   const csvContent = convertToCSV(tableData);
   
@@ -128,7 +132,7 @@ async function saveTableData(tableData, filename) {
   return new Promise((resolve, reject) => {
     chrome.downloads.download({
       url: dataUrl,
-      filename: `${filename}.csv`,
+      filename: `${folderName}/${filename}.csv`,
       saveAs: false
     }, downloadId => {
       if (chrome.runtime.lastError) {
@@ -153,3 +157,60 @@ function convertToCSV(tableData) {
   
   return [header, ...rows].join('\n');
 }
+
+
+// 創建說明文件
+async function createInfoFile(tab, tableData, filename, folderName, timestamp) {
+  try {
+    // 創建說明內容
+    const now = new Date();
+    const infoContent = `醫療資料擷取說明
+===================
+
+擷取時間: ${now.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}
+網站標題: ${tab.title}
+網站網址: ${tab.url}
+檔案名稱: ${filename}
+
+檔案清單:
+- ${filename}.png (截圖)
+${tableData && tableData.length > 0 ? `- ${filename}.csv (表格資料，共 ${tableData.length} 筆記錄)` : '- 無表格資料'}
+- info.txt (本說明文件)
+
+${tableData && tableData.length > 0 ? `
+表格資料摘要:
+欄位數量: ${Object.keys(tableData[0]).length}
+記錄數量: ${tableData.length}
+欄位名稱: ${Object.keys(tableData[0]).join(', ')}
+` : ''}
+
+擷取工具: 醫療資料一鍵擷取工具 v1.0.0
+技術支援: Chrome Extension API
+`;
+
+    // 將說明內容轉換為 Base64 編碼
+    const base64 = btoa(unescape(encodeURIComponent(infoContent)));
+    const dataUrl = `data:text/plain;charset=utf-8;base64,${base64}`;
+    
+    // 儲存說明文件
+    return new Promise((resolve, reject) => {
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: `${folderName}/info.txt`,
+        saveAs: false
+      }, downloadId => {
+        if (chrome.runtime.lastError) {
+          console.warn('無法創建說明文件:', chrome.runtime.lastError);
+          resolve(null); // 不讓說明文件失敗影響主要功能
+        } else {
+          console.log('成功創建說明文件');
+          resolve(downloadId);
+        }
+      });
+    });
+  } catch (error) {
+    console.warn('創建說明文件時發生錯誤:', error);
+    return null; // 不讓說明文件失敗影響主要功能
+  }
+}
+
