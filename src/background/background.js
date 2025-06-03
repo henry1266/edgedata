@@ -99,16 +99,18 @@ async function saveScreenshot(dataUrl, filename) {
 async function saveTableData(tableData, filename) {
   // 轉換為 CSV 格式
   const csvContent = convertToCSV(tableData);
-  const blob = new Blob([csvContent], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
+  
+  // 使用 data URL 而非 Blob URL，以提高瀏覽器相容性
+  // 將 CSV 內容轉換為 Base64 編碼
+  const base64 = btoa(unescape(encodeURIComponent(csvContent)));
+  const dataUrl = `data:text/csv;base64,${base64}`;
   
   return new Promise((resolve, reject) => {
     chrome.downloads.download({
-      url: url,
+      url: dataUrl,
       filename: `${filename}.csv`,
       saveAs: false
     }, downloadId => {
-      URL.revokeObjectURL(url);
       if (chrome.runtime.lastError) {
         reject(chrome.runtime.lastError);
       } else {
